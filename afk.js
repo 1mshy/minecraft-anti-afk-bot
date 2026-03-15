@@ -35,10 +35,16 @@ function createBot() {
   async function sendDiscordWebhook(message) {
     if (!CONFIG.webhookUrl) return;
     try {
+      const payload = {
+        content: `**[${bot.username}]** ${message}`,
+        username: bot.username,
+        avatar_url: `https://mc-heads.net/avatar/${bot.username}`
+      };
+      
       await fetch(CONFIG.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: message })
+        body: JSON.stringify(payload)
       });
     } catch (err) {
       console.log('Failed to send webhook:', err);
