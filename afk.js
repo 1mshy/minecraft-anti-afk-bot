@@ -21,9 +21,7 @@ let spawnedOnce = false;
 let lastShardsValue = null;
 let shardsCheckInterval = null;
 
-// Live map of scoreboard entries: itemName -> value
-// Populated from raw scoreboard_score packets (1.20.4 format)
-const scoreboardEntries = new Map();
+
 
 function createBot() {
   bot = mineflayer.createBot({
@@ -53,28 +51,12 @@ function createBot() {
     console.log(`[Shards] ${reason} — starting shards check in ${delayMs / 1000}s...`);
     setTimeout(() => {
       if (shardsCheckInterval) return; // another path beat us to it
-      lastShardsValue = getShardsValue();
-      console.log(`[Shards] Initial shards value: ${lastShardsValue ?? 'not found'}`);
-      console.log('[Shards] Shards AFK-world check running every 60s.');
+      console.log('[Shards] Shards AFK-world check running every 60s. Sending initial /shards query.');
+      
+      bot.chat('/shards');
 
-      shardsCheckInterval = setInterval(async () => {
-        const currentShards = getShardsValue();
-        console.log(`[Shards] Shards now: ${currentShards ?? 'not found'}, was: ${lastShardsValue ?? 'not found'}`);
-
-        if (currentShards !== null && lastShardsValue !== null) {
-          const diff = currentShards - lastShardsValue;
-          if (diff >= 1) {
-            console.log(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
-          } else {
-            console.log(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
-            await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
-            bot.chat('/afk');
-          }
-        } else {
-          console.log('[Shards] ⚠️ Could not read shards from scoreboard.');
-        }
-
-        lastShardsValue = currentShards;
+      shardsCheckInterval = setInterval(() => {
+        bot.chat('/shards');
       }, 60000);
     }, delayMs);
   }
@@ -105,22 +87,27 @@ function createBot() {
     }, 1500);
   });
 
-  // Listen to raw scoreboard_score packets (1.20.4 uses this instead of update_score)
-  // itemName = display text of the row (e.g. "§6 Shards §e32")
-  // value    = sort order (8, 7, 6 ...), NOT the actual stat number
-  bot._client.on('scoreboard_score', (packet) => {
-    scoreboardEntries.set(packet.itemName, packet);
-    // Temporary: log display_name to confirm structure
-    if (packet.display_name !== null && packet.display_name !== undefined) {
-      console.log(`[ScoreDN] v=${packet.value}`, JSON.stringify(packet.display_name).substring(0, 200));
+  bot.on('message', async (message) => {
+    const text = message.toString();
+    const match = text.match(/Your shards:\s*([\d,.]+)/i);
+    if (match) {
+      const currentShards = parseFloat(match[1].replace(/,/g, ''));
+      console.log(`[Shards] Shards now: ${currentShards}, was: ${lastShardsValue ?? 'not found'}`);
+      
+      if (lastShardsValue !== null) {
+        const diff = currentShards - lastShardsValue;
+        if (diff >= 1) {
+          console.log(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
+        } else {
+          console.log(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
+          await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
+          bot.chat('/afk');
+        }
+      } else {
+        console.log(`[Shards] Initial shards value set to: ${currentShards}`);
+      }
+      lastShardsValue = currentShards;
     }
-  });
-  bot._client.on('reset_score', (packet) => {
-    scoreboardEntries.delete(packet.entity_name);
-  });
-  // Clear all entries when the objective is removed (action 1)
-  bot._client.on('scoreboard_objective', (packet) => {
-    if (packet.action === 1) scoreboardEntries.clear();
   });
 
 
@@ -174,69 +161,7 @@ function createBot() {
   });
 }
 
-/**
- * Recursively extract plain text from a minecraft-protocol Chat component.
- * Handles strings, {text, extra} objects, and arrays.
- */
-function extractChatText(component) {
-  if (!component) return '';
-  if (typeof component === 'string') return component;
-  let out = '';
-  if (component.text) out += component.text;
-  if (component.extra) {
-    const extras = Array.isArray(component.extra) ? component.extra : [component.extra];
-    for (const part of extras) out += extractChatText(part);
-  }
-  return out;
-}
 
-/**
- * Reads the "Shards" value from the live scoreboardEntries map.
- *
- * Each scoreboard_score packet has:
- *   - itemName:     unique placeholder (§ + control char)
- *   - display_name: Chat component containing the visible row text, e.g. "§6 Shards §e32"
- *   - value:        sort order (NOT the stat count)
- *
- * We flatten the display_name text, strip format codes, find the
- * entry that contains "shards", and parse the trailing number.
- */
-function getShardsValue() {
-  try {
-    for (const [, packet] of scoreboardEntries) {
-      const dn = packet.display_name;
-      if (!dn) continue;
-
-      // Unwrap minecraft-protocol's NBT-style wrapper if present
-      // e.g. { type: 'compound', value: { text: { type:'string', value:'...' }, extra: ... } }
-      let component = dn;
-      if (dn && dn.type === 'compound' && dn.value) {
-        // Convert NBT compound to a plain object
-        component = Object.fromEntries(
-          Object.entries(dn.value).map(([k, v]) => [
-            k,
-            v && v.value !== undefined ? v.value : v
-          ])
-        );
-      }
-
-      const rawText = extractChatText(component);
-      const clean = rawText.replace(/§[\s\S]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-      if (clean.includes('shards')) {
-        // Parse the last number in the text, e.g. "shards 32" -> 32
-        const match = clean.match(/(\d[\d,.]*)\s*$/);
-        if (match) {
-          const num = parseFloat(match[1].replace(/,/g, ''));
-          if (!isNaN(num)) return num;
-        }
-      }
-    }
-  } catch (err) {
-    console.log('[Shards] Error reading scoreboard:', err);
-  }
-  return null;
-}
 
 createBot();
 
