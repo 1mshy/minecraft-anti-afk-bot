@@ -110,11 +110,10 @@ function createBot() {
   // value    = sort order (8, 7, 6 ...), NOT the actual stat number
   bot._client.on('scoreboard_score', (packet) => {
     scoreboardEntries.set(packet.itemName, packet);
-    // Debug: show hex bytes of itemName + all packet fields
-    const hex = Buffer.from(packet.itemName ?? '', 'utf8').toString('hex');
-    console.log(`[ScoreHex] value=${packet.value} itemName_hex=${hex} keys=${Object.keys(packet).join(',')}`);
-    if (packet.displayName !== undefined) console.log(`  displayName:`, JSON.stringify(packet.displayName));
-    if (packet.numberFormat !== undefined) console.log(`  numberFormat:`, JSON.stringify(packet.numberFormat));
+    // Temporary: log display_name to confirm structure
+    if (packet.display_name !== null && packet.display_name !== undefined) {
+      console.log(`[ScoreDN] v=${packet.value}`, JSON.stringify(packet.display_name).substring(0, 200));
+    }
   });
   bot._client.on('reset_score', (packet) => {
     scoreboardEntries.delete(packet.entity_name);
@@ -176,22 +175,56 @@ function createBot() {
 }
 
 /**
- * Reads the "Shards" value from the live scoreboard entries map.
+ * Recursively extract plain text from a minecraft-protocol Chat component.
+ * Handles strings, {text, extra} objects, and arrays.
+ */
+function extractChatText(component) {
+  if (!component) return '';
+  if (typeof component === 'string') return component;
+  let out = '';
+  if (component.text) out += component.text;
+  if (component.extra) {
+    const extras = Array.isArray(component.extra) ? component.extra : [component.extra];
+    for (const part of extras) out += extractChatText(part);
+  }
+  return out;
+}
+
+/**
+ * Reads the "Shards" value from the live scoreboardEntries map.
  *
- * DonutSMP sidebar (1.20.4) sends scoreboard_score packets where:
- *   - itemName = full formatted display text, e.g. "§6 Shards §e32"
- *   - value    = row sort order (not the stat)
+ * Each scoreboard_score packet has:
+ *   - itemName:     unique placeholder (§ + control char)
+ *   - display_name: Chat component containing the visible row text, e.g. "§6 Shards §e32"
+ *   - value:        sort order (NOT the stat count)
  *
- * We strip formatting codes and find the entry whose text contains
- * "shards", then parse the trailing number.
+ * We flatten the display_name text, strip format codes, find the
+ * entry that contains "shards", and parse the trailing number.
  */
 function getShardsValue() {
   try {
-    for (const [itemName] of scoreboardEntries) {
-      // Strip all §X formatting codes and trim whitespace
-      const clean = itemName.replace(/§[\s\S]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    for (const [, packet] of scoreboardEntries) {
+      const dn = packet.display_name;
+      if (!dn) continue;
+
+      // Unwrap minecraft-protocol's NBT-style wrapper if present
+      // e.g. { type: 'compound', value: { text: { type:'string', value:'...' }, extra: ... } }
+      let component = dn;
+      if (dn && dn.type === 'compound' && dn.value) {
+        // Convert NBT compound to a plain object
+        component = Object.fromEntries(
+          Object.entries(dn.value).map(([k, v]) => [
+            k,
+            v && v.value !== undefined ? v.value : v
+          ])
+        );
+      }
+
+      const rawText = extractChatText(component);
+      const clean = rawText.replace(/§[\s\S]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
       if (clean.includes('shards')) {
-        // Extract the last number in the text, e.g. "shards 32" -> 32
+        // Parse the last number in the text, e.g. "shards 32" -> 32
         const match = clean.match(/(\d[\d,.]*)\s*$/);
         if (match) {
           const num = parseFloat(match[1].replace(/,/g, ''));
