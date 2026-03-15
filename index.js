@@ -7,7 +7,7 @@ const CONFIG = {
   port: 25565,
   username: 'Lazy_Kid', // Change to your Minecraft email or username
   auth: 'microsoft', // Use 'offline' for cracked servers
-  version: '1.21.11', // Changed from false. Note: 1.21.11 is a Bedrock version, Java uses 1.21.1 or 1.21.2 etc.
+  version: '1.20.4', // Changed to extremely stable 1.20.4 instead of 1.21.11 (Bedrock version) or false
   interval: 15000, // Time in milliseconds between movements (e.g., 15 seconds)
   areaSize: 1, // 1 block radius = 3x3 area centered on the start position
   webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
@@ -81,6 +81,10 @@ bot.on('end', () => {
   if (afkInterval) clearInterval(afkInterval);
 });
 
+bot.on('physicsTick', () => {
+  bot.setControlState('sneak', true);
+});
+
 let isEating = false;
 
 bot.on('health', async () => {
@@ -131,6 +135,7 @@ function performAntiAFK() {
 
   console.log(`Anti-AFK: Moving towards X:${targetX.toFixed(1)} Z:${targetZ.toFixed(1)} (Offset: ${offsetX}, ${offsetZ})`);
 
+  bot.setControlState('sneak', true); // Shift always
   // Only set goal if we are not currently pathfinding to avoid overlapping commands
   if (!bot.pathfinder.isMoving()) {
     bot.pathfinder.setGoal(goal);
