@@ -1,3 +1,4 @@
+require('dotenv').config();
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 
@@ -5,12 +6,12 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const CONFIG = {
   host: 'donutsmp.net',
   port: 25565,
-  username: 'Lazy_Kid', // Change to your Minecraft email or username
+  username: process.env.MC_USERNAME_INDEX || 'Lazy_Kid', // Change to your Minecraft email or username
   auth: 'microsoft', // Use 'offline' for cracked servers
   version: '1.20.4', // Changed to extremely stable 1.20.4 instead of 1.21.11 (Bedrock version) or false
   interval: 15000, // Time in milliseconds between movements (e.g., 15 seconds)
   areaSize: 2, // 1 block radius = 3x3 area centered on the start position
-  webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
+  webhookUrl: process.env.WEBHOOK_URL // Add your Discord webhook URL here
 };
 
 let bot;
