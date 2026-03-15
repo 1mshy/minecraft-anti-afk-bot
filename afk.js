@@ -111,3 +111,16 @@ bot.on('death', async () => {
   console.log('Bot died!');
   await sendDiscordWebhook(`💀 **AFK Bot Alert:** Died!`);
 });
+
+// Setup terminal command input
+const readline = require('readline');
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+rl.on('line', (input) => {
+  if (input.trim()) {
+    bot.chat(input);
+  }
+});

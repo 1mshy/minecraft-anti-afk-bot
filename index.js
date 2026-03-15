@@ -150,3 +150,16 @@ bot.on('whisper', (username, message) => {
     bot.whisper(username, 'AFK center updated to my current position.');
   }
 });
+
+// Setup terminal command input
+const readline = require('readline');
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+rl.on('line', (input) => {
+  if (input.trim()) {
+    bot.chat(input);
+  }
+});
