@@ -21,6 +21,10 @@ let spawnedOnce = false;
 let lastShardsValue = null;
 let shardsCheckInterval = null;
 
+// Live map of scoreboard entries: itemName -> value
+// Populated from raw scoreboard_score packets (1.20.4 format)
+const scoreboardEntries = new Map();
+
 function createBot() {
   bot = mineflayer.createBot({
     host: CONFIG.host,
@@ -43,60 +47,83 @@ function createBot() {
     }
   }
 
+  // Shared helper — safe to call multiple times; the interval guard ensures it only starts once
+  function startShardsTracking(delayMs, reason) {
+    if (shardsCheckInterval) return; // already running
+    console.log(`[Shards] ${reason} — starting shards check in ${delayMs / 1000}s...`);
+    setTimeout(() => {
+      if (shardsCheckInterval) return; // another path beat us to it
+      lastShardsValue = getShardsValue();
+      console.log(`[Shards] Initial shards value: ${lastShardsValue ?? 'not found'}`);
+      console.log('[Shards] Shards AFK-world check running every 60s.');
+
+      shardsCheckInterval = setInterval(async () => {
+        const currentShards = getShardsValue();
+        console.log(`[Shards] Shards now: ${currentShards ?? 'not found'}, was: ${lastShardsValue ?? 'not found'}`);
+
+        if (currentShards !== null && lastShardsValue !== null) {
+          const diff = currentShards - lastShardsValue;
+          if (diff >= 1) {
+            console.log(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
+          } else {
+            console.log(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
+            await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
+            bot.chat('/afk');
+          }
+        } else {
+          console.log('[Shards] ⚠️ Could not read shards from scoreboard.');
+        }
+
+        lastShardsValue = currentShards;
+      }, 60000);
+    }, delayMs);
+  }
+
   bot.on('spawn', () => {
     if (!spawnedOnce) {
       console.log('Bot has spawned!');
       spawnedOnce = true;
     }
-
-    // Start shards tracking once spawned
-    if (!shardsCheckInterval) {
-      console.log('[Shards] Starting shards AFK-world check (every 60s)...');
-      lastShardsValue = getShardsValue();
-      console.log(`[Shards] Initial shards value: ${lastShardsValue ?? 'not found'}`);
-
-      shardsCheckInterval = setInterval(async () => {
-        const currentShards = getShardsValue();
-        console.log(`[Shards] Current shards: ${currentShards ?? 'not found'}, Previous: ${lastShardsValue ?? 'not found'}`);
-
-        if (currentShards !== null && lastShardsValue !== null) {
-          const diff = currentShards - lastShardsValue;
-          if (diff >= 1) {
-            console.log(`[Shards] ✅ In AFK world! Shards increased by ${diff} over the last minute.`);
-          } else {
-            console.log(`[Shards] ❌ NOT in AFK world! Shards did not increase (diff: ${diff}). Re-entering AFK world...`);
-            await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk command.`);
-            bot.chat('/afk');
-          }
-        } else {
-          console.log('[Shards] ⚠️ Could not read shards value from scoreboard.');
-        }
-
-        lastShardsValue = currentShards;
-      }, 60000); // Check every 60 seconds
-    }
+    // Fallback: if the bot spawns already inside the AFK world (no windowOpen fires),
+    // start tracking after 30s so the scoreboard has time to populate.
+    startShardsTracking(30000, 'Spawned (fallback path)');
   });
 
   bot.on('windowOpen', (window) => {
-    // A double chest has 54 slots in the top section
-    // The fifth last slot in a 54-slot inventory (0-53) is 49. (53, 52, 51, 50, 49)
-    // This is the exact middle slot of the last row.
     const slotToClick = 49;
-
-    // We can verify it's a double chest by checking the amount of slots if we want,
-    // but just assuming any window opened right after might be it.
     console.log(`Window opened: ${window.title ? window.title : 'Unknown'} (${window.type})`);
 
     setTimeout(() => {
       console.log(`Clicking slot ${slotToClick}...`);
-      // Left click the slot to join AFK
       bot.clickWindow(slotToClick, 0, 0).then(() => {
         console.log('Successfully clicked the AFK slot.');
+        // Start tracking 15s after clicking — the window path gets priority over the spawn fallback
+        startShardsTracking(15000, 'Clicked AFK slot');
       }).catch(err => {
         console.log('Error clicking window:', err);
       });
-    }, 1500); // 1.5 seconds delay before clicking to ensure it loads
+    }, 1500);
   });
+
+  // Listen to raw scoreboard_score packets (1.20.4 uses this instead of update_score)
+  // itemName = display text of the row (e.g. "§6 Shards §e32")
+  // value    = sort order (8, 7, 6 ...), NOT the actual stat number
+  bot._client.on('scoreboard_score', (packet) => {
+    scoreboardEntries.set(packet.itemName, packet);
+    // Debug: show hex bytes of itemName + all packet fields
+    const hex = Buffer.from(packet.itemName ?? '', 'utf8').toString('hex');
+    console.log(`[ScoreHex] value=${packet.value} itemName_hex=${hex} keys=${Object.keys(packet).join(',')}`);
+    if (packet.displayName !== undefined) console.log(`  displayName:`, JSON.stringify(packet.displayName));
+    if (packet.numberFormat !== undefined) console.log(`  numberFormat:`, JSON.stringify(packet.numberFormat));
+  });
+  bot._client.on('reset_score', (packet) => {
+    scoreboardEntries.delete(packet.entity_name);
+  });
+  // Clear all entries when the objective is removed (action 1)
+  bot._client.on('scoreboard_objective', (packet) => {
+    if (packet.action === 1) scoreboardEntries.clear();
+  });
+
 
   bot.on('error', (err) => {
     console.log(`Error: ${err}`);
@@ -149,21 +176,26 @@ function createBot() {
 }
 
 /**
- * Reads the "Shards" value from the sidebar scoreboard.
- * Returns the numeric value, or null if not found.
+ * Reads the "Shards" value from the live scoreboard entries map.
+ *
+ * DonutSMP sidebar (1.20.4) sends scoreboard_score packets where:
+ *   - itemName = full formatted display text, e.g. "§6 Shards §e32"
+ *   - value    = row sort order (not the stat)
+ *
+ * We strip formatting codes and find the entry whose text contains
+ * "shards", then parse the trailing number.
  */
 function getShardsValue() {
   try {
-    // bot.scoreboard is a map of objective name -> scoreboard object
-    for (const objective of Object.values(bot.scoreboard)) {
-      // Check sidebar display slot
-      if (objective.position === 1) { // 1 = sidebar
-        for (const [name, entry] of Object.entries(objective.itemsMap ?? {})) {
-          // Strip Minecraft formatting codes for comparison
-          const cleanName = name.replace(/§./g, '').toLowerCase();
-          if (cleanName.includes('shards')) {
-            return entry.value;
-          }
+    for (const [itemName] of scoreboardEntries) {
+      // Strip all §X formatting codes and trim whitespace
+      const clean = itemName.replace(/§[\s\S]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (clean.includes('shards')) {
+        // Extract the last number in the text, e.g. "shards 32" -> 32
+        const match = clean.match(/(\d[\d,.]*)\s*$/);
+        if (match) {
+          const num = parseFloat(match[1].replace(/,/g, ''));
+          if (!isNaN(num)) return num;
         }
       }
     }
@@ -195,7 +227,6 @@ rl.on('line', async (input) => {
     bot.setControlState('sneak', false);
     setTimeout(() => {
       bot.setControlState('forward', false);
-      bot.setControlState('sneak', true);
       console.log(`[Walk] Done walking ${blocks} block(s).`);
     }, durationMs);
   } else {
