@@ -17,6 +17,10 @@ let isEating = false;
 let previousHealth = 20;
 let spawnedOnce = false;
 
+// Shards AFK-world tracking
+let lastShardsValue = null;
+let shardsCheckInterval = null;
+
 function createBot() {
   bot = mineflayer.createBot({
     host: CONFIG.host,
@@ -43,6 +47,33 @@ function createBot() {
     if (!spawnedOnce) {
       console.log('Bot has spawned!');
       spawnedOnce = true;
+    }
+
+    // Start shards tracking once spawned
+    if (!shardsCheckInterval) {
+      console.log('[Shards] Starting shards AFK-world check (every 60s)...');
+      lastShardsValue = getShardsValue();
+      console.log(`[Shards] Initial shards value: ${lastShardsValue ?? 'not found'}`);
+
+      shardsCheckInterval = setInterval(async () => {
+        const currentShards = getShardsValue();
+        console.log(`[Shards] Current shards: ${currentShards ?? 'not found'}, Previous: ${lastShardsValue ?? 'not found'}`);
+
+        if (currentShards !== null && lastShardsValue !== null) {
+          const diff = currentShards - lastShardsValue;
+          if (diff >= 1) {
+            console.log(`[Shards] ✅ In AFK world! Shards increased by ${diff} over the last minute.`);
+          } else {
+            console.log(`[Shards] ❌ NOT in AFK world! Shards did not increase (diff: ${diff}). Re-entering AFK world...`);
+            await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk command.`);
+            bot.chat('/afk');
+          }
+        } else {
+          console.log('[Shards] ⚠️ Could not read shards value from scoreboard.');
+        }
+
+        lastShardsValue = currentShards;
+      }, 60000); // Check every 60 seconds
     }
   });
 
@@ -78,6 +109,11 @@ function createBot() {
   bot.on('end', () => {
     console.log('Bot disconnected. Reconnecting in 10 seconds...');
     spawnedOnce = false;
+    if (shardsCheckInterval) {
+      clearInterval(shardsCheckInterval);
+      shardsCheckInterval = null;
+    }
+    lastShardsValue = null;
     setTimeout(createBot, 10000);
   });
 
@@ -110,6 +146,31 @@ function createBot() {
     console.log('Bot died!');
     await sendDiscordWebhook(`💀 **AFK Bot Alert:** Died!`);
   });
+}
+
+/**
+ * Reads the "Shards" value from the sidebar scoreboard.
+ * Returns the numeric value, or null if not found.
+ */
+function getShardsValue() {
+  try {
+    // bot.scoreboard is a map of objective name -> scoreboard object
+    for (const objective of Object.values(bot.scoreboard)) {
+      // Check sidebar display slot
+      if (objective.position === 1) { // 1 = sidebar
+        for (const [name, entry] of Object.entries(objective.itemsMap ?? {})) {
+          // Strip Minecraft formatting codes for comparison
+          const cleanName = name.replace(/§./g, '').toLowerCase();
+          if (cleanName.includes('shards')) {
+            return entry.value;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.log('[Shards] Error reading scoreboard:', err);
+  }
+  return null;
 }
 
 createBot();
