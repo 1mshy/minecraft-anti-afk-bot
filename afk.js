@@ -1,5 +1,6 @@
-require('dotenv').config();
-const mineflayer = require('mineflayer');
+import 'dotenv/config';
+import mineflayer from 'mineflayer';
+import readline from 'readline';
 
 // Configuration
 const CONFIG = {
@@ -114,7 +115,6 @@ function createBot() {
 createBot();
 
 // Setup terminal command input
-const readline = require('readline');
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout

@@ -1,6 +1,8 @@
-require('dotenv').config();
-const mineflayer = require('mineflayer');
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+import 'dotenv/config';
+import mineflayer from 'mineflayer';
+import pkg from 'mineflayer-pathfinder';
+const { pathfinder, Movements, goals } = pkg;
+import readline from 'readline';
 
 // Configuration
 const CONFIG = {
@@ -164,7 +166,6 @@ function performAntiAFK() {
 createBot();
 
 // Setup terminal command input
-const readline = require('readline');
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
