@@ -7,9 +7,10 @@ const CONFIG = {
   port: 25565,
   username: 'Lazy_Kid', // Change to your Minecraft email or username
   auth: 'microsoft', // Use 'offline' for cracked servers
-  version: '1.21.1', // Changed from false. Note: 1.21.11 is a Bedrock version, Java uses 1.21.1 or 1.21.2 etc.
+  version: '1.21.11', // Changed from false. Note: 1.21.11 is a Bedrock version, Java uses 1.21.1 or 1.21.2 etc.
   interval: 15000, // Time in milliseconds between movements (e.g., 15 seconds)
-  areaSize: 1 // 1 block radius = 3x3 area centered on the start position
+  areaSize: 1, // 1 block radius = 3x3 area centered on the start position
+  webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
 };
 
 const bot = mineflayer.createBot({
@@ -24,9 +25,24 @@ bot.loadPlugin(pathfinder);
 
 let startPosition = null;
 let afkInterval = null;
+let previousHealth = 20;
+
+async function sendDiscordWebhook(message) {
+  if (!CONFIG.webhookUrl) return;
+  try {
+    await fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: message })
+    });
+  } catch (err) {
+    console.log('Failed to send webhook:', err);
+  }
+}
 
 bot.on('spawn', () => {
   console.log('Bot has spawned!');
+  bot.setControlState('sneak', true); // Shift always
 
   // Record the starting position when the bot spawns to keep it anchored
   if (!startPosition) {
@@ -63,6 +79,39 @@ bot.on('kicked', (reason) => {
 bot.on('end', () => {
   console.log('Bot disconnected.');
   if (afkInterval) clearInterval(afkInterval);
+});
+
+let isEating = false;
+
+bot.on('health', async () => {
+  if (bot.health < previousHealth) {
+    console.log(`Bot injured! Health: ${bot.health.toFixed(1)}/20`);
+    await sendDiscordWebhook(`⚠️ **Bot Alert:** Injured! Current health: ${bot.health.toFixed(1)}/20`);
+  }
+  previousHealth = bot.health;
+
+  // Eat cooked beef if food is not full to maintain high saturation
+  if (bot.food < 20 && !isEating) {
+    const beef = bot.inventory.items().find(item => item.name === 'cooked_beef');
+    if (beef) {
+      isEating = true;
+      try {
+        await bot.equip(beef, 'hand');
+        await bot.consume();
+        console.log('Ate a cooked beef.');
+      } catch (err) {
+        console.log('Error eating:', err);
+      } finally {
+        isEating = false;
+        bot.setControlState('sneak', true); // Ensure we keep sneaking
+      }
+    }
+  }
+});
+
+bot.on('death', async () => {
+  console.log('Bot died!');
+  await sendDiscordWebhook(`💀 **Bot Alert:** Died!`);
 });
 
 function performAntiAFK() {
