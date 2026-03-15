@@ -172,8 +172,22 @@ const rl = readline.createInterface({
 });
 
 rl.on('line', (input) => {
-  if (input.trim() && bot) {
-    bot.chat(input);
+  const trimmed = input.trim();
+  if (!trimmed || !bot) return;
+
+  const walkMatch = trimmed.match(/^\/walk\s+(\d+)$/i);
+  if (walkMatch) {
+    const blocks = parseInt(walkMatch[1], 10);
+    const yaw = bot.entity.yaw;
+    const pos = bot.entity.position;
+    // Calculate target position n blocks in the direction the bot is facing
+    const targetX = pos.x + (-Math.sin(yaw) * blocks);
+    const targetZ = pos.z + (-Math.cos(yaw) * blocks);
+    console.log(`[Walk] Walking ${blocks} block(s) forward to X:${targetX.toFixed(1)} Z:${targetZ.toFixed(1)}`);
+    const goal = new goals.GoalNear(targetX, pos.y, targetZ, 0.5);
+    bot.pathfinder.setGoal(goal);
+  } else {
+    bot.chat(trimmed);
   }
 });
 

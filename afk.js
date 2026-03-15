@@ -181,9 +181,25 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 console.log("setup command passing")
-rl.on('line', (input) => {
-  if (input.trim() && bot) {
-    bot.chat(input);
+rl.on('line', async (input) => {
+  const trimmed = input.trim();
+  if (!trimmed || !bot) return;
+
+  const walkMatch = trimmed.match(/^\/walk\s+(\d+)$/i);
+  if (walkMatch) {
+    const blocks = parseInt(walkMatch[1], 10);
+    // Approx 1 block ~= 270ms at normal walk speed; adjust if needed
+    const durationMs = blocks * 270;
+    console.log(`[Walk] Walking forward ${blocks} block(s) (~${durationMs}ms)`);
+    bot.setControlState('forward', true);
+    bot.setControlState('sneak', false);
+    setTimeout(() => {
+      bot.setControlState('forward', false);
+      bot.setControlState('sneak', true);
+      console.log(`[Walk] Done walking ${blocks} block(s).`);
+    }, durationMs);
+  } else {
+    bot.chat(trimmed);
   }
 });
 
