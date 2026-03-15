@@ -40,12 +40,6 @@ bot.on('spawn', () => {
   if (!spawnedOnce) {
     console.log('Bot has spawned!');
     spawnedOnce = true;
-
-    // Wait a brief moment before typing /afk to make sure we're fully logged in and the server is ready
-    setTimeout(() => {
-      console.log('Typing /afk...');
-      bot.chat('/afk');
-    }, 3000);
   }
 });
 
@@ -118,7 +112,7 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
-
+console.log("setup command passing")
 rl.on('line', (input) => {
   if (input.trim()) {
     bot.chat(input);

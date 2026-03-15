@@ -9,7 +9,7 @@ const CONFIG = {
   auth: 'microsoft', // Use 'offline' for cracked servers
   version: '1.20.4', // Changed to extremely stable 1.20.4 instead of 1.21.11 (Bedrock version) or false
   interval: 15000, // Time in milliseconds between movements (e.g., 15 seconds)
-  areaSize: 1, // 1 block radius = 3x3 area centered on the start position
+  areaSize: 2, // 1 block radius = 3x3 area centered on the start position
   webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
 };
 
