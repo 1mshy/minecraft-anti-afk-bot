@@ -10,16 +10,19 @@ const CONFIG = {
   webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
 };
 
-const bot = mineflayer.createBot({
-  host: CONFIG.host,
-  port: CONFIG.port,
-  username: CONFIG.username,
-  auth: CONFIG.auth,
-  version: CONFIG.version
-});
-
+let bot;
 let isEating = false;
 let previousHealth = 20;
+let spawnedOnce = false;
+
+function createBot() {
+  bot = mineflayer.createBot({
+    host: CONFIG.host,
+    port: CONFIG.port,
+    username: CONFIG.username,
+    auth: CONFIG.auth,
+    version: CONFIG.version
+  });
 
 async function sendDiscordWebhook(message) {
   if (!CONFIG.webhookUrl) return;
@@ -34,9 +37,7 @@ async function sendDiscordWebhook(message) {
   }
 }
 
-let spawnedOnce = false;
-
-bot.on('spawn', () => {
+  bot.on('spawn', () => {
   if (!spawnedOnce) {
     console.log('Bot has spawned!');
     spawnedOnce = true;
@@ -68,13 +69,15 @@ bot.on('error', (err) => {
   console.log(`Error: ${err}`);
 });
 
-bot.on('kicked', (reason) => {
-  console.log(`Kicked from server:`, reason);
-});
+  bot.on('kicked', (reason) => {
+    console.log(`Kicked from server:`, reason);
+  });
 
-bot.on('end', () => {
-  console.log('Bot disconnected.');
-});
+  bot.on('end', () => {
+    console.log('Bot disconnected. Reconnecting in 10 seconds...');
+    spawnedOnce = false;
+    setTimeout(createBot, 10000);
+  });
 
 bot.on('health', async () => {
   if (bot.health < previousHealth) {
@@ -101,10 +104,13 @@ bot.on('health', async () => {
   }
 });
 
-bot.on('death', async () => {
-  console.log('Bot died!');
-  await sendDiscordWebhook(`💀 **AFK Bot Alert:** Died!`);
-});
+  bot.on('death', async () => {
+    console.log('Bot died!');
+    await sendDiscordWebhook(`💀 **AFK Bot Alert:** Died!`);
+  });
+}
+
+createBot();
 
 // Setup terminal command input
 const readline = require('readline');
@@ -114,7 +120,16 @@ const rl = readline.createInterface({
 });
 console.log("setup command passing")
 rl.on('line', (input) => {
-  if (input.trim()) {
+  if (input.trim() && bot) {
     bot.chat(input);
+  }
+});
+
+// Suppress unhandled exceptions like EPIPE
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE') {
+    console.log('Caught EPIPE error, ignoring (server closed connection).');
+  } else {
+    console.error('Uncaught Exception:', err);
   }
 });

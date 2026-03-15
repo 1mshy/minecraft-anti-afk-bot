@@ -13,19 +13,22 @@ const CONFIG = {
   webhookUrl: 'https://discord.com/api/webhooks/1482531525118656543/C4r99Gq-X_GjI8IRbIaUjzUDRh1Qrow06kpmH9qJfyYNUsHd4p6HZ_jIt19haxZZxO2_' // Add your Discord webhook URL here
 };
 
-const bot = mineflayer.createBot({
-  host: CONFIG.host,
-  port: CONFIG.port,
-  username: CONFIG.username,
-  auth: CONFIG.auth,
-  version: CONFIG.version
-});
-
-bot.loadPlugin(pathfinder);
-
+let bot;
 let startPosition = null;
 let afkInterval = null;
 let previousHealth = 20;
+
+function createBot() {
+  bot = mineflayer.createBot({
+    host: CONFIG.host,
+    port: CONFIG.port,
+    username: CONFIG.username,
+    auth: CONFIG.auth,
+    version: CONFIG.version
+  });
+
+  bot.loadPlugin(pathfinder);
+
 
 async function sendDiscordWebhook(message) {
   if (!CONFIG.webhookUrl) return;
@@ -72,14 +75,19 @@ bot.on('error', (err) => {
 });
 
 bot.on('kicked', (reason) => {
-  console.log(`Kicked from server:`, reason);
-  if (afkInterval) clearInterval(afkInterval);
-});
+    console.log(`Kicked from server:`, reason);
+    if (afkInterval) clearInterval(afkInterval);
+  });
 
-bot.on('end', () => {
-  console.log('Bot disconnected.');
-  if (afkInterval) clearInterval(afkInterval);
-});
+  bot.on('end', () => {
+    console.log('Bot disconnected. Reconnecting in 10 seconds...');
+    if (afkInterval) {
+      clearInterval(afkInterval);
+      afkInterval = null;
+    }
+    startPosition = null;
+    setTimeout(createBot, 10000);
+  });
 
 bot.on('physicsTick', () => {
   bot.setControlState('sneak', true);
@@ -87,7 +95,7 @@ bot.on('physicsTick', () => {
 
 let isEating = false;
 
-bot.on('health', async () => {
+  bot.on('health', async () => {
   if (bot.health < previousHealth) {
     console.log(`Bot injured! Health: ${bot.health.toFixed(1)}/20`);
     await sendDiscordWebhook(`⚠️ **Bot Alert:** Injured! Current health: ${bot.health.toFixed(1)}/20`);
@@ -142,14 +150,17 @@ function performAntiAFK() {
   }
 }
 
-// Basic utility to allow you to reset the center by sending a whisper to the bot
-bot.on('whisper', (username, message) => {
-  if (message === 'resetcenter') {
-    startPosition = bot.entity.position.clone();
-    console.log(`Center reset by ${username} to ${startPosition.x.toFixed(2)}, ${startPosition.y.toFixed(2)}, ${startPosition.z.toFixed(2)}`);
-    bot.whisper(username, 'AFK center updated to my current position.');
-  }
-});
+  // Basic utility to allow you to reset the center by sending a whisper to the bot
+  bot.on('whisper', (username, message) => {
+    if (message === 'resetcenter') {
+      startPosition = bot.entity.position.clone();
+      console.log(`Center reset by ${username} to ${startPosition.x.toFixed(2)}, ${startPosition.y.toFixed(2)}, ${startPosition.z.toFixed(2)}`);
+      bot.whisper(username, 'AFK center updated to my current position.');
+    }
+  });
+}
+
+createBot();
 
 // Setup terminal command input
 const readline = require('readline');
@@ -159,7 +170,16 @@ const rl = readline.createInterface({
 });
 
 rl.on('line', (input) => {
-  if (input.trim()) {
+  if (input.trim() && bot) {
     bot.chat(input);
+  }
+});
+
+// Suppress unhandled exceptions like EPIPE
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE') {
+    console.log('Caught EPIPE error, ignoring (server closed connection).');
+  } else {
+    console.error('Uncaught Exception:', err);
   }
 });
