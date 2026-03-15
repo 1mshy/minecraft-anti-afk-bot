@@ -104,6 +104,14 @@ function createBot() {
         const diff = currentShards - lastShardsValue;
         if (diff >= 1) {
           console.log(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
+          
+          // Check if we crossed a multiple of 1500
+          if (Math.floor(lastShardsValue / 1500) < Math.floor(currentShards / 1500)) {
+            const milestone = Math.floor(currentShards / 1500) * 1500;
+            console.log(`[Shards] 🎯 Milestone reached: ${milestone} shards!`);
+            await sendDiscordWebhook(`🎉 **Milestone Reached!** We just hit **${milestone} shards**! (Current: ${currentShards})`);
+          }
+          
         } else {
           console.log(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
           await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
