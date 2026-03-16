@@ -20,10 +20,20 @@ let spawnedOnce = false;
 // Shards AFK-world tracking
 let lastShardsValue = null;
 let shardsCheckInterval = null;
-
-
+let autoReconnectTimeout = null;
 
 function createBot() {
+  if (autoReconnectTimeout) {
+    clearTimeout(autoReconnectTimeout);
+    autoReconnectTimeout = null;
+  }
+  
+  // Disconnect every 6 hours to avoid sticking points
+  autoReconnectTimeout = setTimeout(() => {
+    console.log('6 hours have passed. Disconnecting to reconnect...');
+    if (bot) bot.quit();
+  }, 6 * 60 * 60 * 1000);
+
   bot = mineflayer.createBot({
     host: CONFIG.host,
     port: CONFIG.port,
@@ -95,9 +105,14 @@ function createBot() {
 
   bot.on('message', async (message) => {
     const text = message.toString();
-    const match = text.match(/Your shards:\s*([\d,.]+)/i);
+    const match = text.match(/Your shards:\s*([\d,.]+)([kmb]?)/i);
     if (match) {
-      const currentShards = parseFloat(match[1].replace(/,/g, ''));
+      let currentShards = parseFloat(match[1].replace(/,/g, ''));
+      const suffix = match[2].toLowerCase();
+      if (suffix === 'k') currentShards *= 1000;
+      else if (suffix === 'm') currentShards *= 1000000;
+      else if (suffix === 'b') currentShards *= 1000000000;
+
       console.log(`[Shards] Shards now: ${currentShards}, was: ${lastShardsValue ?? 'not found'}`);
       
       if (lastShardsValue !== null) {
@@ -136,6 +151,10 @@ function createBot() {
   bot.on('end', () => {
     console.log('Bot disconnected. Reconnecting in 10 seconds...');
     spawnedOnce = false;
+    if (autoReconnectTimeout) {
+      clearTimeout(autoReconnectTimeout);
+      autoReconnectTimeout = null;
+    }
     if (shardsCheckInterval) {
       clearInterval(shardsCheckInterval);
       shardsCheckInterval = null;
