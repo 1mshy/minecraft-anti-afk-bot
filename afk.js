@@ -54,7 +54,7 @@ function createBot(username) {
     clearTimeout(autoReconnectTimeout);
     autoReconnectTimeout = null;
   }
-  
+
   // Disconnect every 6 hours to avoid sticking points
   autoReconnectTimeout = setTimeout(() => {
     botLogger.info(`6 hours have passed. Disconnecting to reconnect...`);
@@ -92,7 +92,7 @@ function createBot(username) {
         username: bot.username,
         avatar_url: `https://mc-heads.net/avatar/${bot.username}`
       };
-      
+
       await fetch(CONFIG.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -151,19 +151,19 @@ function createBot(username) {
       else if (suffix === 'b') currentShards *= 1000000000;
 
       botLogger.info(`[Shards] Shards now: ${currentShards}, was: ${lastShardsValue ?? 'not found'}`);
-      
+
       if (lastShardsValue !== null) {
         const diff = currentShards - lastShardsValue;
         if (diff >= 1) {
           botLogger.info(`[Shards] ✅ In AFK world! Shards +${diff} since last check.`);
-          
+
           // Check if we crossed a multiple of 1500
           if (Math.floor(lastShardsValue / 1500) < Math.floor(currentShards / 1500)) {
             const milestone = Math.floor(currentShards / 1500) * 1500;
             botLogger.info(`[Shards] 🎯 Milestone reached: ${milestone} shards!`);
             await sendDiscordWebhook(`🎉 **Milestone Reached!** We just hit **${milestone} shards**! (Current: ${currentShards})`);
           }
-          
+
         } else {
           botLogger.info(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
           await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
@@ -204,11 +204,11 @@ function createBot(username) {
       shardsCheckInterval = null;
     }
     lastShardsValue = null;
-    
+
     // Remove from active bots array
     const idx = bots.indexOf(bot);
     if (idx !== -1) {
-        bots.splice(idx, 1);
+      bots.splice(idx, 1);
     }
 
     setTimeout(() => createBot(username), 10000);
@@ -249,12 +249,12 @@ async function startAllBots() {
   for (let i = 0; i < CONFIG.usernames.length; i++) {
     const username = CONFIG.usernames[i];
     if (!username) continue;
-    
+
     createBot(username);
 
     // Add random delay between 0 and 30 seconds for all bots except after the last one
     if (i < CONFIG.usernames.length - 1) {
-      const delayMs = Math.floor(Math.random() * 30000);
+      const delayMs = Math.floor(Math.random() * 30000 + 15000);
       logger.info(`Waiting ${Math.round(delayMs / 1000)} seconds before logging in the next bot...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
