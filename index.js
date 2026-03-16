@@ -165,6 +165,18 @@ function performAntiAFK() {
 
 createBot();
 
+function walkBot(blocks) {
+  if (!bot || !bot.entity) return;
+  const yaw = bot.entity.yaw;
+  const pos = bot.entity.position;
+  // Calculate target position n blocks in the direction the bot is facing
+  const targetX = pos.x + (-Math.sin(yaw) * blocks);
+  const targetZ = pos.z + (-Math.cos(yaw) * blocks);
+  console.log(`[Walk] Walking ${blocks} block(s) forward to X:${targetX.toFixed(1)} Z:${targetZ.toFixed(1)}`);
+  const goal = new goals.GoalNear(targetX, pos.y, targetZ, 0.5);
+  bot.pathfinder.setGoal(goal);
+}
+
 // Setup terminal command input
 const rl = readline.createInterface({
   input: process.stdin,
@@ -178,14 +190,7 @@ rl.on('line', (input) => {
   const walkMatch = trimmed.match(/^\/walk\s+(\d+)$/i);
   if (walkMatch) {
     const blocks = parseInt(walkMatch[1], 10);
-    const yaw = bot.entity.yaw;
-    const pos = bot.entity.position;
-    // Calculate target position n blocks in the direction the bot is facing
-    const targetX = pos.x + (-Math.sin(yaw) * blocks);
-    const targetZ = pos.z + (-Math.cos(yaw) * blocks);
-    console.log(`[Walk] Walking ${blocks} block(s) forward to X:${targetX.toFixed(1)} Z:${targetZ.toFixed(1)}`);
-    const goal = new goals.GoalNear(targetX, pos.y, targetZ, 0.5);
-    bot.pathfinder.setGoal(goal);
+    walkBot(blocks);
   } else {
     bot.chat(trimmed);
   }

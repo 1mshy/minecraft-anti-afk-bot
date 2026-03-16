@@ -223,6 +223,22 @@ async function startAllBots() {
 
 startAllBots();
 
+function walkBots(blocks) {
+  // Approx 1 block ~= 270ms at normal walk speed; adjust if needed
+  const durationMs = blocks * 270;
+  console.log(`[Walk] Walking forward ${blocks} block(s) (~${durationMs}ms) for all bots`);
+  bots.forEach(b => {
+    b.setControlState('forward', true);
+    b.setControlState('sneak', false);
+  });
+  setTimeout(() => {
+    bots.forEach(b => {
+      b.setControlState('forward', false);
+    });
+    console.log(`[Walk] Done walking ${blocks} block(s).`);
+  }, durationMs);
+}
+
 // Setup terminal command input
 const rl = readline.createInterface({
   input: process.stdin,
@@ -236,19 +252,7 @@ rl.on('line', async (input) => {
   const walkMatch = trimmed.match(/^\/walk\s+(\d+)$/i);
   if (walkMatch) {
     const blocks = parseInt(walkMatch[1], 10);
-    // Approx 1 block ~= 270ms at normal walk speed; adjust if needed
-    const durationMs = blocks * 270;
-    console.log(`[Walk] Walking forward ${blocks} block(s) (~${durationMs}ms) for all bots`);
-    bots.forEach(b => {
-      b.setControlState('forward', true);
-      b.setControlState('sneak', false);
-    });
-    setTimeout(() => {
-      bots.forEach(b => {
-        b.setControlState('forward', false);
-      });
-      console.log(`[Walk] Done walking ${blocks} block(s).`);
-    }, durationMs);
+    walkBots(blocks);
   } else {
     bots.forEach(b => b.chat(trimmed));
   }
