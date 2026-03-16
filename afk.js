@@ -1,6 +1,24 @@
 import 'dotenv/config';
 import mineflayer from 'mineflayer';
 import readline from 'readline';
+import winston from 'winston';
+
+
+// Logger setup
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.printf(({ timestamp, level, message, username }) => {
+      const userPrefix = username ? `[${username}] ` : '';
+      return `[${timestamp}] ${level}: ${userPrefix}${message}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console()
+  ]
+});
 
 // Configuration
 const CONFIG = {
@@ -15,6 +33,7 @@ const CONFIG = {
 const bots = [];
 
 function createBot(username) {
+  const botLogger = logger.child({ username });
   let bot;
   let isEating = false;
   let previousHealth = 20;
@@ -32,7 +51,7 @@ function createBot(username) {
   
   // Disconnect every 6 hours to avoid sticking points
   autoReconnectTimeout = setTimeout(() => {
-    console.log(`[${username}] 6 hours have passed. Disconnecting to reconnect...`);
+    botLogger.info(`6 hours have passed. Disconnecting to reconnect...`);
     if (bot) bot.quit();
   }, 6 * 60 * 60 * 1000);
 
@@ -45,6 +64,13 @@ function createBot(username) {
   });
 
   bots.push(bot);
+
+  const originalChat = bot.chat.bind(bot);
+  bot.chat = (message) => {
+    botLogger.info(`[CHAT-OUT] ${message}`);
+    originalChat(message);
+  };
+
 
   async function sendDiscordWebhook(message) {
     if (!CONFIG.webhookUrl) return;
@@ -61,17 +87,17 @@ function createBot(username) {
         body: JSON.stringify(payload)
       });
     } catch (err) {
-      console.log(`[${username}] Failed to send webhook:`, err);
+      botLogger.error(`Failed to send webhook:`, err);
     }
   }
 
   // Shared helper — safe to call multiple times; the interval guard ensures it only starts once
   function startShardsTracking(delayMs, reason) {
     if (shardsCheckInterval) return; // already running
-    console.log(`[${username}] [Shards] ${reason} — starting shards check in ${delayMs / 1000}s...`);
+    botLogger.info(`[Shards] ${reason} — starting shards check in ${delayMs / 1000}s...`);
     setTimeout(() => {
       if (shardsCheckInterval) return; // another path beat us to it
-      console.log(`[${username}] [Shards] Shards AFK-world check running every 60s. Sending initial /shards query.`);
+      botLogger.info(`[Shards] Shards AFK-world check running every 60s. Sending initial /shards query.`);
       
       bot.chat('/shards');
 
@@ -83,7 +109,7 @@ function createBot(username) {
 
   bot.on('spawn', () => {
     if (!spawnedOnce) {
-      console.log(`[${username}] Bot has spawned!`);
+      botLogger.info(`Bot has spawned!`);
       spawnedOnce = true;
     }
     // Fallback: if the bot spawns already inside the AFK world (no windowOpen fires),
@@ -93,16 +119,16 @@ function createBot(username) {
 
   bot.on('windowOpen', (window) => {
     const slotToClick = 49;
-    console.log(`[${username}] Window opened: ${window.title ? window.title : 'Unknown'} (${window.type})`);
+    botLogger.info(`Window opened: ${window.title ? window.title : 'Unknown'} (${window.type})`);
 
     setTimeout(() => {
-      console.log(`[${username}] Clicking slot ${slotToClick}...`);
+      botLogger.info(`Clicking slot ${slotToClick}...`);
       bot.clickWindow(slotToClick, 0, 0).then(() => {
-        console.log(`[${username}] Successfully clicked the AFK slot.`);
+        botLogger.info(`Successfully clicked the AFK slot.`);
         // Start tracking 15s after clicking — the window path gets priority over the spawn fallback
         startShardsTracking(15000, 'Clicked AFK slot');
       }).catch(err => {
-        console.log(`[${username}] Error clicking window:`, err);
+        botLogger.error(`Error clicking window:`, err);
       });
     }, 1500);
   });
@@ -117,27 +143,27 @@ function createBot(username) {
       else if (suffix === 'm') currentShards *= 1000000;
       else if (suffix === 'b') currentShards *= 1000000000;
 
-      console.log(`[${username}] [Shards] Shards now: ${currentShards}, was: ${lastShardsValue ?? 'not found'}`);
+      botLogger.info(`[Shards] Shards now: ${currentShards}, was: ${lastShardsValue ?? 'not found'}`);
       
       if (lastShardsValue !== null) {
         const diff = currentShards - lastShardsValue;
         if (diff >= 1) {
-          console.log(`[${username}] [Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
+          botLogger.info(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
           
           // Check if we crossed a multiple of 1500
           if (Math.floor(lastShardsValue / 1500) < Math.floor(currentShards / 1500)) {
             const milestone = Math.floor(currentShards / 1500) * 1500;
-            console.log(`[${username}] [Shards] 🎯 Milestone reached: ${milestone} shards!`);
+            botLogger.info(`[Shards] 🎯 Milestone reached: ${milestone} shards!`);
             await sendDiscordWebhook(`🎉 **Milestone Reached!** We just hit **${milestone} shards**! (Current: ${currentShards})`);
           }
           
         } else {
-          console.log(`[${username}] [Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
+          botLogger.info(`[Shards] ❌ NOT in AFK world! Shards diff: ${diff}. Re-sending /afk...`);
           await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Not in AFK world! Shards did not increase. Re-sending /afk.`);
           bot.chat('/afk');
         }
       } else {
-        console.log(`[${username}] [Shards] Initial shards value set to: ${currentShards}`);
+        botLogger.info(`[Shards] Initial shards value set to: ${currentShards}`);
       }
       lastShardsValue = currentShards;
     }
@@ -145,15 +171,15 @@ function createBot(username) {
 
 
   bot.on('error', (err) => {
-    console.log(`[${username}] Error: ${err}`);
+    botLogger.info(`Error: ${err}`);
   });
 
   bot.on('kicked', (reason) => {
-    console.log(`[${username}] Kicked from server:`, reason);
+    botLogger.error(`Kicked from server:`, reason);
   });
 
   bot.on('end', () => {
-    console.log(`[${username}] Bot disconnected. Reconnecting in 10 seconds...`);
+    botLogger.info(`Bot disconnected. Reconnecting in 10 seconds...`);
     spawnedOnce = false;
     if (autoReconnectTimeout) {
       clearTimeout(autoReconnectTimeout);
@@ -176,7 +202,7 @@ function createBot(username) {
 
   bot.on('health', async () => {
     if (bot.health < previousHealth) {
-      console.log(`[${username}] Bot injured! Health: ${bot.health.toFixed(1)}/20`);
+      botLogger.info(`Bot injured! Health: ${bot.health.toFixed(1)}/20`);
       await sendDiscordWebhook(`⚠️ **AFK Bot Alert:** Injured! Current health: ${bot.health.toFixed(1)}/20`);
     }
     previousHealth = bot.health;
@@ -189,9 +215,9 @@ function createBot(username) {
         try {
           await bot.equip(beef, 'hand');
           await bot.consume();
-          console.log(`[${username}] Ate a cooked beef.`);
+          botLogger.info(`Ate a cooked beef.`);
         } catch (err) {
-          console.log(`[${username}] Error eating:`, err);
+          botLogger.error(`Error eating:`, err);
         } finally {
           isEating = false;
         }
@@ -200,7 +226,7 @@ function createBot(username) {
   });
 
   bot.on('death', async () => {
-    console.log(`[${username}] Bot died!`);
+    botLogger.info(`Bot died!`);
     await sendDiscordWebhook(`💀 **AFK Bot Alert:** Died!`);
   });
 }
@@ -215,7 +241,7 @@ async function startAllBots() {
     // Add random delay between 0 and 30 seconds for all bots except after the last one
     if (i < CONFIG.usernames.length - 1) {
       const delayMs = Math.floor(Math.random() * 30000);
-      console.log(`Waiting ${Math.round(delayMs / 1000)} seconds before logging in the next bot...`);
+      logger.info(`Waiting ${Math.round(delayMs / 1000)} seconds before logging in the next bot...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
@@ -226,7 +252,7 @@ startAllBots();
 function walkBots(blocks) {
   // Approx 1 block ~= 270ms at normal walk speed; adjust if needed
   const durationMs = blocks * 270;
-  console.log(`[Walk] Walking forward ${blocks} block(s) (~${durationMs}ms) for all bots`);
+  logger.info(`[Walk] Walking forward ${blocks} block(s) (~${durationMs}ms) for all bots`);
   bots.forEach(b => {
     b.setControlState('forward', true);
     b.setControlState('sneak', false);
@@ -235,7 +261,7 @@ function walkBots(blocks) {
     bots.forEach(b => {
       b.setControlState('forward', false);
     });
-    console.log(`[Walk] Done walking ${blocks} block(s).`);
+    logger.info(`[Walk] Done walking ${blocks} block(s).`);
   }, durationMs);
 }
 
@@ -244,7 +270,7 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
-console.log("setup command passing")
+logger.info("setup command passing")
 rl.on('line', async (input) => {
   const trimmed = input.trim();
   if (!trimmed || bots.length === 0) return;
@@ -261,8 +287,8 @@ rl.on('line', async (input) => {
 // Suppress unhandled exceptions like EPIPE
 process.on('uncaughtException', (err) => {
   if (err.code === 'EPIPE') {
-    console.log('Caught EPIPE error, ignoring (server closed connection).');
+    logger.info('Caught EPIPE error, ignoring (server closed connection).');
   } else {
-    console.error('Uncaught Exception:', err);
+    logger.error('Uncaught Exception:', err);
   }
 });
