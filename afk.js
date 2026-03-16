@@ -44,6 +44,12 @@ function createBot(username) {
   let shardsCheckInterval = null;
   let autoReconnectTimeout = null;
 
+  function triggerShardsQuery() {
+    bot.chat('/shards');
+    // Set a fallback timeout in case the server never replies to this specific query
+    shardsCheckInterval = setTimeout(triggerShardsQuery, 60000);
+  }
+
   if (autoReconnectTimeout) {
     clearTimeout(autoReconnectTimeout);
     autoReconnectTimeout = null;
@@ -97,13 +103,8 @@ function createBot(username) {
     botLogger.info(`[Shards] ${reason} — starting shards check in ${delayMs / 1000}s...`);
     setTimeout(() => {
       if (shardsCheckInterval) return; // another path beat us to it
-      botLogger.info(`[Shards] Shards AFK-world check running every 60s. Sending initial /shards query.`);
-      
-      bot.chat('/shards');
-
-      shardsCheckInterval = setInterval(() => {
-        bot.chat('/shards');
-      }, 60000);
+      botLogger.info(`[Shards] Shards AFK-world check starting. Sending initial /shards query.`);
+      triggerShardsQuery();
     }, delayMs);
   }
 
@@ -148,7 +149,7 @@ function createBot(username) {
       if (lastShardsValue !== null) {
         const diff = currentShards - lastShardsValue;
         if (diff >= 1) {
-          botLogger.info(`[Shards] ✅ In AFK world! Shards +${diff} over last minute.`);
+          botLogger.info(`[Shards] ✅ In AFK world! Shards +${diff} since last check.`);
           
           // Check if we crossed a multiple of 1500
           if (Math.floor(lastShardsValue / 1500) < Math.floor(currentShards / 1500)) {
@@ -166,6 +167,13 @@ function createBot(username) {
         botLogger.info(`[Shards] Initial shards value set to: ${currentShards}`);
       }
       lastShardsValue = currentShards;
+
+      if (shardsCheckInterval) {
+        clearTimeout(shardsCheckInterval);
+        const nextIntervalMs = (currentShards >= 1000) ? 10 * 60 * 1000 : 60 * 1000;
+        botLogger.info(`[Shards] Next check scheduled in ${nextIntervalMs / 1000}s.`);
+        shardsCheckInterval = setTimeout(triggerShardsQuery, nextIntervalMs);
+      }
     }
   });
 
@@ -186,7 +194,7 @@ function createBot(username) {
       autoReconnectTimeout = null;
     }
     if (shardsCheckInterval) {
-      clearInterval(shardsCheckInterval);
+      clearTimeout(shardsCheckInterval);
       shardsCheckInterval = null;
     }
     lastShardsValue = null;
