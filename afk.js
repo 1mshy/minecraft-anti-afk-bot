@@ -193,7 +193,8 @@ function createBot(username) {
   });
 
   bot.on('end', () => {
-    botLogger.info(`Bot disconnected. Reconnecting in 10 seconds...`);
+    const DELAY = 20000 + Math.floor(Math.random() * 15000);
+    botLogger.info(`Bot disconnected. Reconnecting in ${DELAY / 1000} seconds...`);
     spawnedOnce = false;
     if (autoReconnectTimeout) {
       clearTimeout(autoReconnectTimeout);
@@ -211,7 +212,7 @@ function createBot(username) {
       bots.splice(idx, 1);
     }
 
-    setTimeout(() => createBot(username), 10000);
+    setTimeout(() => createBot(username), DELAY);
   });
 
   bot.on('health', async () => {
@@ -254,7 +255,7 @@ async function startAllBots() {
 
     // Add random delay between 0 and 30 seconds for all bots except after the last one
     if (i < CONFIG.usernames.length - 1) {
-      const delayMs = Math.floor(Math.random() * 30000 + 15000);
+      const delayMs = Math.floor(Math.random() * 30000 + 30000);
       logger.info(`Waiting ${Math.round(delayMs / 1000)} seconds before logging in the next bot...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
