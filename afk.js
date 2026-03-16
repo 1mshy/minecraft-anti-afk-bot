@@ -71,11 +71,13 @@ function createBot(username) {
 
   bots.push(bot);
 
-  const originalChat = bot.chat.bind(bot);
-  bot.chat = (message) => {
-    botLogger.info(`[CHAT-OUT] ${message}`);
-    originalChat(message);
-  };
+  bot.once('inject_allowed', () => {
+    const originalChat = bot.chat.bind(bot);
+    bot.chat = (message) => {
+      botLogger.info(`[CHAT-OUT] ${message}`);
+      originalChat(message);
+    };
+  });
 
 
   async function sendDiscordWebhook(message) {
