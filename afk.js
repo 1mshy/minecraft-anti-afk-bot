@@ -71,12 +71,16 @@ function createBot(username) {
 
   bots.push(bot);
 
-  bot.once('inject_allowed', () => {
-    const originalChat = bot.chat.bind(bot);
-    bot.chat = (message) => {
-      botLogger.info(`[CHAT-OUT] ${message}`);
-      originalChat(message);
-    };
+  bot.once('login', () => {
+    // Only patch if it exists and hasn't been patched already
+    if (bot.chat && !bot.chat.patched) {
+      const originalChat = bot.chat.bind(bot);
+      bot.chat = (message) => {
+        botLogger.info(`[CHAT-OUT] ${message}`);
+        originalChat(message);
+      };
+      bot.chat.patched = true;
+    }
   });
 
 
